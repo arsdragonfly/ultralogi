@@ -32,9 +32,7 @@ fn main() {
         .unwrap();
     let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
     app.insert_resource(transport);
-    app.add_system(send_message_system);
-    app.add_system(receive_message_system);
-    app.add_system(handle_events_system);
+    app.add_systems(Update, (send_message_system, receive_message_system, handle_events_system));
     app.run();
 }
 

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 ultralogi-common = { path = "../ultralogi-common" }
 bevy = "0.11.0"
+bevy_renet = "0.0.9"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

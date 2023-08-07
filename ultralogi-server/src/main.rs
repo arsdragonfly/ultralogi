@@ -1,6 +1,7 @@
 use std::{net::UdpSocket, time::SystemTime};
 
 use bevy::prelude::*;
+use bevy::utils::Duration;
 use bevy_renet::{
     renet::{
         transport::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
@@ -9,6 +10,11 @@ use bevy_renet::{
     transport::NetcodeServerPlugin,
     RenetServerPlugin,
 };
+
+#[derive(Resource)]
+struct SimulationTickerConfig {
+    timer: Timer,
+}
 
 fn main() {
     let mut app = App::new();
@@ -32,9 +38,23 @@ fn main() {
         .unwrap();
     let transport = NetcodeServerTransport::new(current_time, server_config, socket).unwrap();
     app.insert_resource(transport);
-    app.add_systems(Update, (send_message_system, receive_message_system, handle_events_system));
+    let simulation_ticket_config = SimulationTickerConfig {
+        timer: Timer::new(Duration::from_millis(500), TimerMode::Repeating)
+    };
+    app.insert_resource(simulation_ticket_config);
+    // app.add_systems(Update, (send_message_system, receive_message_system, handle_events_system));
+    app.add_systems(Update, (tick_system, handle_events_system));
     app.run();
 }
+
+fn tick_system(mut server: ResMut<RenetServer>, time: Res<Time>, mut simulation_ticker_config: ResMut<SimulationTickerConfig>) {
+    simulation_ticker_config.timer.tick(time.delta());
+    if simulation_ticker_config.timer.finished() {
+        server.broadcast_message(DefaultChannel::ReliableOrdered, "tick".as_bytes().to_vec());
+        simulation_ticker_config.timer.reset();
+    }
+}
+
 
 fn send_message_system(mut server: ResMut<RenetServer>) {
     let channel_id = 0;

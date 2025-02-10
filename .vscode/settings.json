@@ -1,3 +1,0 @@
-{
-    "rust-analyzer.runnables.extraArgs": ["--features", "bevy/dynamic_linking"]
-}

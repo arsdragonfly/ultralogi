@@ -4,9 +4,9 @@ Thank you for your interest in contributing to Ultralogi! This document outlines
 
 ## Contributor License Agreement (CLA)
 
-**Before your contribution can be accepted, you must agree to our [Contributor License Agreement](CLA.md).**
+**Before your contribution can be accepted, you must agree to our Contributor License Agreement.**
 
-When you open your first pull request, the CLA Assistant bot will automatically ask you to sign. Simply follow the bot's instructions to agree to the CLA terms.
+We use the [SAP Individual Contributor License Agreement](https://gist.github.com/CLAassistant/bd1ea8ec8aa0357414e8). When you open your first pull request, the CLA Assistant bot will automatically ask you to sign. Simply follow the bot's instructions to agree to the CLA terms.
 
 ### Why a CLA?
 

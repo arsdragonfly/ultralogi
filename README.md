@@ -100,7 +100,7 @@ Lua scripting will be added for modding support:
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
-By submitting a pull request, you agree to our [Contributor License Agreement](CLA.md).
+We use the [SAP Individual CLA](https://gist.github.com/CLAassistant/bd1ea8ec8aa0357414e8) via CLA Assistant.
 
 ## License
 

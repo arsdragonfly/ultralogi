@@ -1,3 +1,4 @@
+/// <reference path="./types/interface.d.ts" />
 import React, { type LC, type PropsWithChildren, hot, useResource, useState } from "@use-gpu/live";
 import { makeFallback } from "./Fallback";
 import { HTML } from "@use-gpu/react";
@@ -14,6 +15,8 @@ import { UI, Layout, Flex, Inline, Text } from "@use-gpu/layout";
 import { UseInspect } from "@use-gpu/inspect";
 import { inspectGPU } from "@use-gpu/inspect-gpu";
 import '@use-gpu/inspect/theme.css';
+
+import { queryRows } from "./utils/query";
 
 // Wrap this in its own component to avoid JSX trashing of the view
 type CameraProps = PropsWithChildren<object>;
@@ -39,9 +42,9 @@ export const App: LC = hot(() => {
     const msg = window.ultralogi?.hello("Use.GPU");
     if (msg) setGreeting(msg);
     
-    // Test SQL execution
+    // Test SQL execution with Arrow
     try {
-      const rows = window.ultralogi?.query_json<{ version: string }>("SELECT version() as version");
+      const rows = queryRows<{ version: string }>("SELECT version() as version");
       if (rows?.[0]) {
         setSqlResult(`DuckDB: ${rows[0].version}`);
       }

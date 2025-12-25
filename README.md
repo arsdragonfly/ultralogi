@@ -68,8 +68,21 @@ npm start
 | Function | Description |
 |----------|-------------|
 | `hello(name)` | Test function, returns greeting |
-| `execute_sql(sql)` | Execute raw SQL, returns QueryResult |
-| `query_json(sql)` | Query and return results as parsed JSON array |
+| `execute(sql)` | Execute statements (INSERT/UPDATE/DELETE), returns rows affected |
+| `query(sql)` | Query and return Arrow IPC buffer (zero-copy) |
+
+### TypeScript Helpers (via `src/utils/query.ts`)
+
+```typescript
+import { queryArrow, queryRows } from './utils/query';
+
+// Get Arrow Table - best for GPU upload or typed array access
+const table = queryArrow('SELECT * FROM entities');
+const xs = table.getChild('x')?.toArray();  // Float64Array
+
+// Get plain objects - convenience for small datasets
+const rows = queryRows<Entity>('SELECT * FROM entities');
+```
 
 ## Architecture
 

@@ -83,6 +83,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-cast",
  "arrow-data",
+ "arrow-ipc",
  "arrow-ord",
  "arrow-row",
  "arrow-schema",
@@ -162,6 +163,20 @@ dependencies = [
  "arrow-schema",
  "half",
  "num",
+]
+
+[[package]]
+name = "arrow-ipc"
+version = "56.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d3594dcddccc7f20fd069bc8e9828ce37220372680ff638c5e00dea427d88f5"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "arrow-select",
+ "flatbuffers",
 ]
 
 [[package]]
@@ -528,6 +543,16 @@ name = "find-msvc-tools"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a3076410a55c90011c298b04d0cfa770b00fa04e1e3c97d3f6c9de105a03844"
+
+[[package]]
+name = "flatbuffers"
+version = "25.12.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
+dependencies = [
+ "bitflags",
+ "rustc_version",
+]
 
 [[package]]
 name = "flate2"
@@ -1146,8 +1171,6 @@ dependencies = [
  "napi-derive",
  "napi-sys",
  "once_cell",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1642,6 +1665,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
+name = "rustc_version"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+dependencies = [
+ "semver",
+]
+
+[[package]]
 name = "rustix"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2102,13 +2134,12 @@ name = "ultralogi-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrow",
  "duckdb",
  "napi",
  "napi-build",
  "napi-derive",
  "once_cell",
- "serde",
- "serde_json",
 ]
 
 [[package]]

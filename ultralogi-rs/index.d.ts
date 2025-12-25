@@ -15,3 +15,14 @@ export declare function execute(sql: string): number
  * Use apache-arrow in JS to read: `tableFromIPC(buffer)`
  */
 export declare function query(sql: string): Buffer
+/**
+ * Benchmark each step of the tile query pipeline
+ * Returns JSON with timing breakdown in microseconds
+ */
+export declare function benchmarkTileQuery(tileSpacing: number, colorScale: number): string
+/**
+ * Query tiles and return GPU-ready positions (Float32Array) + colors (Float32Array)
+ * Returns raw bytes: [positions_f32...][colors_f32...]
+ * This computes positions/colors in DuckDB - no JS loops needed!
+ */
+export declare function queryTilesGpuReady(tileSpacing: number, colorScale: number): Buffer

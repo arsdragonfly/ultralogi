@@ -1,111 +1,157 @@
 /// <reference path="./types/interface.d.ts" />
-import React, { type LC, type PropsWithChildren, hot, useResource, useState } from "@use-gpu/live";
+import React, { type LC, type PropsWithChildren, hot, useResource, useState, useMemo } from "@use-gpu/live";
 import { makeFallback } from "./Fallback";
 import { HTML } from "@use-gpu/react";
 import { AutoCanvas, WebGPU } from "@use-gpu/webgpu";
-import { PanControls } from "@use-gpu/interact";
+import { OrbitControls } from "@use-gpu/interact";
 import {
   DebugProvider,
   FontLoader,
-  FlatCamera,
+  OrbitCamera,
   Pass,
+  RawData,
+  SurfaceLayer,
+  AmbientLight,
+  PointLight,
 } from "@use-gpu/workbench";
+import type { VectorLike } from "@use-gpu/core";
+import type { ShaderSource } from "@use-gpu/shader";
 import { UI, Layout, Flex, Inline, Text } from "@use-gpu/layout";
 
 import { UseInspect } from "@use-gpu/inspect";
 import { inspectGPU } from "@use-gpu/inspect-gpu";
 import '@use-gpu/inspect/theme.css';
 
-// Benchmark results
-type BenchmarkResult = {
-  setupMs: number;
-  queryMs: number;
-  bytesPerQuery: number;
-};
+const GRID_SIZE = 384; // Testing larger grid for 60fps limit estimation
 
-// Generate map chunk data in DuckDB
-const setupMapData = (chunkSize: number): void => {
-  window.ultralogi.execute(`
-    CREATE TABLE IF NOT EXISTS map_tiles (
-      x INTEGER,
-      y INTEGER,
-      tile_type INTEGER,
-      elevation FLOAT
-    )
-  `);
-  window.ultralogi.execute("DELETE FROM map_tiles");
-  window.ultralogi.execute(`
-    INSERT INTO map_tiles
-    SELECT 
-      (i % ${chunkSize}) as x,
-      (i / ${chunkSize}) as y,
-      (random() * 4)::INTEGER as tile_type,
-      sin(i * 0.01) * 50 + random() * 10 as elevation
-    FROM range(0, ${chunkSize * chunkSize}) t(i)
-  `);
-};
+// GPU-ready tile data - pre-computed positions and colors from Rust
+interface GpuTileData {
+  count: number;
+  positions: Float32Array; // vec4[] - x,y,z,w
+  colors: Float32Array;    // vec4[] - r,g,b,a
+}
 
-// Run benchmark - measures DuckDB query + Arrow IPC serialization + napi-rs transfer
-const runBenchmark = (chunkSize: number, iterations: number): BenchmarkResult => {
-  const setupStart = performance.now();
-  setupMapData(chunkSize);
-  const setupMs = performance.now() - setupStart;
+// Parse the raw buffer from queryTilesGpuReady - ZERO PARSING OVERHEAD!
+function parseGpuTileBuffer(buffer: Buffer): GpuTileData {
+  const dataView = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   
-  // Warm up
-  window.ultralogi.query("SELECT * FROM map_tiles WHERE x < 10 AND y < 10");
+  // First 4 bytes = count (u32 little-endian)
+  const count = dataView.getUint32(0, true);
   
-  let totalQueryMs = 0;
-  let bytesPerQuery = 0;
+  // Rest is positions then colors as f32
+  const floatData = new Float32Array(
+    buffer.buffer, 
+    buffer.byteOffset + 4, 
+    count * 8 // 4 floats for position + 4 floats for color
+  );
   
-  for (let i = 0; i < iterations; i++) {
-    const startX = Math.floor(Math.random() * (chunkSize - 32));
-    const startY = Math.floor(Math.random() * (chunkSize - 32));
-    
-    const queryStart = performance.now();
-    const buffer = window.ultralogi.query(`
-      SELECT x, y, tile_type, elevation 
-      FROM map_tiles 
-      WHERE x >= ${startX} AND x < ${startX + 32}
-        AND y >= ${startY} AND y < ${startY + 32}
-    `);
-    totalQueryMs += performance.now() - queryStart;
-    bytesPerQuery = buffer.length;
-  }
+  // Split into positions and colors (views into same buffer - zero copy!)
+  const positions = new Float32Array(floatData.buffer, floatData.byteOffset, count * 4);
+  const colors = new Float32Array(floatData.buffer, floatData.byteOffset + count * 16, count * 4);
   
-  return {
-    setupMs,
-    queryMs: totalQueryMs / iterations,
-    bytesPerQuery,
-  };
-};
+  return { count, positions, colors };
+}
 
-// Wrap this in its own component to avoid JSX trashing of the view
+// 3D Camera with orbit controls
 type CameraProps = PropsWithChildren<object>;
-const Camera: LC<CameraProps> = (props: CameraProps) => (
-  <PanControls>
-    {(x, y, zoom) => (
-      <FlatCamera x={x} y={y} zoom={zoom}>
+const Camera3D: LC<CameraProps> = (props: CameraProps) => (
+  <OrbitControls
+    radius={100}
+    bearing={0.5}
+    pitch={0.4}
+  >
+    {(radius, phi, theta, target) => (
+      <OrbitCamera 
+        radius={radius} 
+        phi={phi} 
+        theta={theta}
+        target={target as unknown as VectorLike}
+        fov={60}
+        near={1}
+        far={1000}
+      >
         {props.children}
-      </FlatCamera>
+      </OrbitCamera>
     )}
-  </PanControls>
+  </OrbitControls>
 );
+
+// Component to render map tiles - wrap Float32Arrays in RawData for GPU upload
+type TileMapProps = {
+  tiles: GpuTileData;
+};
+
+const TileMap3D: LC<TileMapProps> = ({ tiles }: TileMapProps) => {
+  return (
+    <RawData format="vec4<f32>" data={tiles.positions}>
+      {(positionsSource) => (
+        <RawData format="vec4<f32>" data={tiles.colors}>
+          {(colorsSource) => (
+            <SurfaceLayer
+              positions={positionsSource as unknown as ShaderSource}
+              colors={colorsSource as unknown as ShaderSource}
+              size={[GRID_SIZE, GRID_SIZE]}
+              shaded
+              side="both"
+            />
+          )}
+        </RawData>
+      )}
+    </RawData>
+  );
+};
 
 export const App: LC = hot(() => {
   const root = document.querySelector("#use-gpu")!;
   const inner = document.querySelector("#use-gpu .canvas")!;
-  const [greeting, setGreeting] = useState<string>("…");
-  const [benchmark, setBenchmark] = useState<BenchmarkResult | null>(null);
+  const [tiles, setTiles] = useState<GpuTileData | null>(null);
+  const [queryTime, setQueryTime] = useState<number>(0);
+  const [benchmark, setBenchmark] = useState<Record<string, unknown> | null>(null);
 
   useResource(() => {
-    const msg = window.ultralogi?.hello("Use.GPU");
-    if (msg) setGreeting(msg);
-    
     try {
-      const result = runBenchmark(128, 100);
-      setBenchmark(result);
+      // Setup the tiles table
+      window.ultralogi.execute(`
+        CREATE TABLE IF NOT EXISTS tiles (
+          x INTEGER,
+          y INTEGER,
+          tile_type INTEGER,
+          elevation FLOAT
+        )
+      `);
+      window.ultralogi.execute("DELETE FROM tiles");
+      window.ultralogi.execute(`
+        INSERT INTO tiles
+        SELECT 
+          (i % ${GRID_SIZE}) as x,
+          (i / ${GRID_SIZE}) as y,
+          (random() * 6)::INTEGER as tile_type,
+          sin(i * 0.01) * 30 + random() * 10 as elevation
+        FROM range(0, ${GRID_SIZE} * ${GRID_SIZE}) t(i)
+      `);
+      
+      // Run benchmark first (5 iterations for warm cache)
+      const benchResults: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < 5; i++) {
+        const json = window.ultralogi.benchmarkTileQuery(1.0, 1.0);
+        benchResults.push(JSON.parse(json));
+      }
+      // Use the last result (warmed up)
+      const benchResult = benchResults[benchResults.length - 1];
+      setBenchmark(benchResult);
+      console.log("🔬 Benchmark (5th run, µs):", JSON.stringify(benchResult, null, 2));
+      
+      // Query tiles with GPU-ready format - positions/colors computed in Rust!
+      const start = performance.now();
+      const buffer = window.ultralogi.queryTilesGpuReady(1.0, 1.0);
+      const tileData = parseGpuTileBuffer(buffer);
+      const elapsed = performance.now() - start;
+      setQueryTime(elapsed);
+      setTiles(tileData);
+      
+      console.log(`Loaded ${tileData.count} tiles in ${elapsed.toFixed(2)}ms (Rust computed!)`);
     } catch (e) {
-      console.error("Benchmark failed:", e);
+      console.error("Failed to load tiles:", e);
     }
   });
 
@@ -118,64 +164,44 @@ export const App: LC = hot(() => {
       >
         <AutoCanvas selector="#use-gpu .canvas" samples={4}>
           <FontLoader>
-            <Camera>
-              <Pass>
+            <Camera3D>
+              <Pass lights>
+                {/* Render the 3D tile map */}
+                {tiles && <TileMap3D tiles={tiles} />}
+
+                {/* Lighting */}
+                <AmbientLight intensity={0.4} />
+                <PointLight position={[50, 100, 50]} intensity={0.8} />
+                
+                {/* UI overlay */}
                 <UI>
                   <Layout>
-                    <Flex width="100%" height="100%" align="center">
+                    <Flex direction="y" gap={10} align="start">
                       <Flex
-                        width={500}
-                        height={150}
-                        fill="#1a1a2e"
+                        width={320}
+                        height={80}
+                        fill="#1a1a2ecc"
                         align="center"
                         direction="y"
                       >
                         <Inline align="center">
-                          <Text
-                            weight="black"
-                            size={48}
-                            lineHeight={64}
-                            color="#4fc3f7"
-                          >
-                            🚂 Ultralogi
+                          <Text weight="black" size={24} lineHeight={32} color="#4fc3f7">
+                            {`🚂 Ultralogi`}
                           </Text>
                         </Inline>
                         <Inline align="center">
-                          <Text
-                            weight="black"
-                            size={16}
-                            lineHeight={64}
-                            color="#ffffff"
-                            opacity={0.5}
-                          >
-                            {greeting}
+                          <Text weight="normal" size={12} lineHeight={20} color="#ffffff">
+                            {tiles 
+                              ? `${tiles.count} tiles | Rust→GPU: ${queryTime.toFixed(2)}ms`
+                              : "Loading..."}
                           </Text>
                         </Inline>
-                        {benchmark && (
-                          <>
-                            <Inline align="center">
-                              <Text weight="bold" size={14} lineHeight={20} color="#ffb74d">
-                                📊 Benchmark: 32x32 chunk query (100 iterations)
-                              </Text>
-                            </Inline>
-                            <Inline align="center">
-                              <Text weight="normal" size={12} lineHeight={18} color="#ffffff">
-                                Query+IPC: {benchmark.queryMs.toFixed(2)}ms | {(1000 / benchmark.queryMs).toFixed(0)} queries/sec
-                              </Text>
-                            </Inline>
-                            <Inline align="center">
-                              <Text weight="normal" size={11} lineHeight={16} color="#aaaaaa">
-                                ~1024 tiles | {(benchmark.bytesPerQuery / 1024).toFixed(1)} KB/query
-                              </Text>
-                            </Inline>
-                          </>
-                        )}
                       </Flex>
                     </Flex>
                   </Layout>
                 </UI>
               </Pass>
-            </Camera>
+            </Camera3D>
           </FontLoader>
         </AutoCanvas>
       </WebGPU>

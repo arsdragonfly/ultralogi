@@ -66,6 +66,8 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
+    "@use-gpu/scene": "^0.18.0",
+    "@use-gpu/voxel": "^0.18.0",
     "apache-arrow": "^21.1.0",
     "electron-squirrel-startup": "^1.0.1"
   }

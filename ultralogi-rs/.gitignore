@@ -5,3 +5,4 @@ target
 npm-debug.log
 cargo.log
 cross.log
+*.so

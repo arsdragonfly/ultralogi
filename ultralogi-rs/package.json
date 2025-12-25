@@ -18,12 +18,14 @@
   "files": [
     "index.mjs",
     "index.d.ts",
-    "*.node"
+    "*.node",
+    "libduckdb.so"
   ],
   "scripts": {
     "test": "cargo test",
-    "build": "napi build --release",
-    "build:debug": "napi build",
+    "build": "DUCKDB_DOWNLOAD_LIB=1 napi build --release && cp target/release/deps/libduckdb.so . && patchelf --set-rpath '$ORIGIN' ultralogi-rs.node && node scripts/sync-exports.mjs",
+    "build:debug": "DUCKDB_DOWNLOAD_LIB=1 napi build && cp target/debug/deps/libduckdb.so . && patchelf --set-rpath '$ORIGIN' ultralogi-rs.node && node scripts/sync-exports.mjs",
+    "sync-exports": "node scripts/sync-exports.mjs",
     "prepublishOnly": "napi prepublish -t npm"
   },
   "license": "AGPL-3.0",

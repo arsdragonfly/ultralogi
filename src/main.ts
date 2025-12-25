@@ -38,8 +38,11 @@ const createWindow = () => {
   mainWindow.webContents.openDevTools();
 };
 
-// Enable unsafe WebGPU on Linux
+// Enable WebGPU with Vulkan on Wayland
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
+app.commandLine.appendSwitch('enable-features', 'Vulkan');
+app.commandLine.appendSwitch('use-angle', 'vulkan');
+app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.

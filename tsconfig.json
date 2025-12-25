@@ -11,7 +11,8 @@
     "baseUrl": ".",
     "outDir": "dist",
     "moduleResolution": "bundler",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": ["@webgpu/types"]
   },
   "include": ["src/**/*", "forge.env.d.ts"]
 }

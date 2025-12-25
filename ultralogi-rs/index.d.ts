@@ -10,6 +10,8 @@ export declare function hello(name: string): string
  * Returns the number of rows affected, or throws on error
  */
 export declare function execute(sql: string): number
+/** Explain a query and return the query plan as a string */
+export declare function explainQuery(sql: string): string
 /**
  * Query and return results as Arrow IPC stream buffer (zero-copy to JS)
  * Use apache-arrow in JS to read: `tableFromIPC(buffer)`
@@ -26,3 +28,65 @@ export declare function benchmarkTileQuery(tileSpacing: number, colorScale: numb
  * This computes positions/colors in DuckDB - no JS loops needed!
  */
 export declare function queryTilesGpuReady(tileSpacing: number, colorScale: number): Buffer
+/**
+ * Precompute GPU-ready tile data and cache in Rust memory (not DuckDB).
+ * This is O(n) at load time, then query_cached_tiles() is O(1).
+ */
+export declare function precomputeTileGpuData(tileSpacing: number, colorScale: number): number
+/**
+ * Query cached GPU data - just returns a clone of the Rust-side cache.
+ * This is O(1) - no DuckDB involved!
+ */
+export declare function queryPrecomputedTiles(): Buffer
+/** Benchmark the cached query path */
+export declare function benchmarkPrecomputedQuery(): string
+/**
+ * Export raw tile data in GPU-friendly format for compute shader processing.
+ * Format: [count:u32][x:i32...][y:i32...][type:i32...][elevation:f32...]
+ * The compute shader will transform this to positions/colors on GPU.
+ * This eliminates ALL CPU-side transformation - just raw column export!
+ *
+ * Optimizations:
+ * - Uses mimalloc global allocator for fast allocation
+ * - Avoids zeroing output buffer (uses uninit memory)
+ * - Direct memcpy from Arrow column buffers
+ * - DuckDB uses parallel execution for query
+ */
+export declare function exportRawTileData(): Buffer
+/** Benchmark: Compare Arrow query vs raw row iteration to isolate Arrow overhead */
+export declare function benchmarkArrowVsNative(): string
+/**
+ * Benchmark different DuckDB settings for Arrow export performance
+ * Tests various configurations to find optimal settings
+ */
+export declare function benchmarkDuckdbSettings(): string
+/**
+ * Get storage info for the tiles table showing compression used
+ * Returns JSON with column compression types
+ */
+export declare function getStorageInfo(): string
+/**
+ * Benchmark compressed vs uncompressed storage
+ * Creates two test tables and compares read performance
+ */
+export declare function benchmarkCompression(): string
+/**
+ * Cache raw tile data in Rust memory for repeated access
+ * Uses uninitialized memory allocation for speed
+ */
+export declare function cacheRawTileData(): number
+/** Get cached raw tile data (fast path - just clone cached bytes) */
+export declare function getCachedRawTiles(): Buffer
+/** Benchmark raw export vs CPU-transformed export */
+export declare function benchmarkRawExport(): string
+/** Benchmark cached raw export */
+export declare function benchmarkCachedRaw(): string
+/**
+ * Generate tile chunks with precomputed GPU data stored as BLOBs
+ * This precomputes positions/colors at insert time for zero runtime transform
+ */
+export declare function generateTileChunks(gridSize: number, chunkSize: number, tileSpacing: number, colorScale: number): void
+/** Query all tile chunks and combine into single GPU-ready buffer */
+export declare function queryChunkedTiles(): Buffer
+/** Benchmark chunked query (minimal overhead - just fetch precomputed BLOBs) */
+export declare function benchmarkChunkedQuery(): string

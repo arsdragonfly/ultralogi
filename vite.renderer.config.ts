@@ -17,8 +17,8 @@ export default defineConfig({
     wgslRollup(),
   ],
   optimizeDeps: {
-    // Don't try to optimize the native module
-    exclude: ["ultralogi-rs"],
+    // Don't try to optimize native modules or libraries with conflicts
+    exclude: ["ultralogi-rs", "apache-arrow"],
   },
   build: {
     rollupOptions: {

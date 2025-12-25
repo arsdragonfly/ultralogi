@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ultralogi</title>
+  </head>
+
+  <style type="text/css" media="all">
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #1a1a2e;
+      color: #fff;
+      overscroll-behavior-x: none;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    #use-gpu, #use-gpu .canvas {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+    }
+    .error-message {
+      background: rgba(255, 0, 0, .2);
+      color: #f99;
+      font-weight: bold;
+      padding: 40px;
+    }
+  </style>
+
+  <body>
+    <div id="use-gpu">
+      <div class="canvas"></div>
+    </div>
+    <script type="module" src="/src/Renderer.tsx"></script>
+  </body>
+</html>

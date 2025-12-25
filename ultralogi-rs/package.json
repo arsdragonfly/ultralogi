@@ -1,0 +1,33 @@
+{
+  "name": "ultralogi-rs",
+  "version": "0.1.0",
+  "description": "Rust game engine components for Ultralogi",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    }
+  },
+  "napi": {
+    "name": "ultralogi-rs",
+    "triples": {}
+  },
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "*.node"
+  ],
+  "scripts": {
+    "test": "cargo test",
+    "build": "napi build --release",
+    "build:debug": "napi build",
+    "prepublishOnly": "napi prepublish -t npm"
+  },
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@napi-rs/cli": "^2"
+  }
+}

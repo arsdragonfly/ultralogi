@@ -1,0 +1,71 @@
+{
+  "name": "ultralogi",
+  "productName": "ultralogi",
+  "version": "0.1.0",
+  "description": "Ultralogi - Transport Tycoon-style logistics game with WebGPU rendering",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx ."
+  },
+  "keywords": [
+    "game",
+    "logistics",
+    "electron",
+    "react",
+    "neon",
+    "webgpu",
+    "duckdb",
+    "lua"
+  ],
+  "author": {
+    "name": "Zheyu Shen",
+    "email": "arsdragonfly@gmail.com"
+  },
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
+    "@electron-forge/plugin-fuses": "^7.10.2",
+    "@electron-forge/plugin-vite": "^7.10.2",
+    "@electron/fuses": "^1.8.0",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/react": "^19.1.15",
+    "@use-gpu/inspect": "^0.18.0",
+    "@use-gpu/inspect-gpu": "^0.18.0",
+    "@use-gpu/interact": "^0.18.0",
+    "@use-gpu/layout": "^0.18.0",
+    "@use-gpu/live": "^0.18.0",
+    "@use-gpu/parse": "^0.18.0",
+    "@use-gpu/react": "^0.18.0",
+    "@use-gpu/shader": "^0.18.0",
+    "@use-gpu/traits": "^0.18.0",
+    "@use-gpu/webgpu": "^0.18.0",
+    "@use-gpu/wgsl-loader": "^0.18.0",
+    "@use-gpu/workbench": "^0.18.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "electron": "39.2.7",
+    "eslint": "^9.35.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "react": "^19.1.1",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.43.0",
+    "ultralogi-rs": "file:./ultralogi-rs",
+    "vite": "^7.1.5",
+    "vite-plugin-checker": "^0.10.3",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1"
+  }
+}

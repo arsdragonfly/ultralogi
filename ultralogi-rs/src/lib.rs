@@ -1,3 +1,9 @@
+// Use mimalloc for fast, consistent allocation latency (important for real-time game ticks)
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 #[macro_use]
 extern crate napi_derive;
 

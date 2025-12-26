@@ -17,6 +17,7 @@ import { UseInspect } from "@use-gpu/inspect";
 import { inspectGPU } from "@use-gpu/inspect-gpu";
 import '@use-gpu/inspect/theme.css';
 import { VoxelRenderer } from "./components/VoxelRenderer";
+import { VoxelRendererGPU } from "./components/VoxelRendererGPU";
 
 // Voxel data parsed from Rust raw buffer
 interface VoxelData {
@@ -142,7 +143,7 @@ export const VoxelDemo: LC = hot(() => {
             <Camera3D>
               <Pass lights>
                 {voxels && (
-                  <VoxelRenderer
+                  <VoxelRendererGPU
                     xData={voxels.xData}
                     yData={voxels.yData}
                     zData={voxels.zData}

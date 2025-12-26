@@ -1,6 +1,12 @@
 /**
- * Voxel Renderer - Working CPU approach (baseline for comparison)
- * Will optimize to GPU instancing once this works
+ * Voxel Renderer - CPU vertex expansion
+ * 
+ * Generates all vertices on CPU, uploads once to GPU.
+ * Single draw call renders all voxels efficiently.
+ * 
+ * For true GPU mesh instancing with Use.GPU, would need custom
+ * vertex shader that applies per-instance transforms. The instances
+ * prop only handles draw call repetition, not per-instance transforms.
  */
 
 import React from "@use-gpu/live";
@@ -19,7 +25,7 @@ interface VoxelRendererProps {
 
 const H = 0.5;
 
-// 8 corners
+// 8 corners of unit cube
 const C = {
   LBB: [-H, -H, -H],
   RBB: [+H, -H, -H],
@@ -31,20 +37,20 @@ const C = {
   LTF: [-H, +H, +H],
 };
 
-// 36 vertices with CCW winding
+// 36 vertices with CCW winding from outside
 const CUBE_TRIS: number[][] = [
-  C.LTF, C.LTB, C.RTB,  C.LTF, C.RTB, C.RTF,
-  C.LBF, C.RBF, C.RBB,  C.LBF, C.RBB, C.LBB,
-  C.LBF, C.LTF, C.RTF,  C.LBF, C.RTF, C.RBF,
-  C.RBB, C.RTB, C.LTB,  C.RBB, C.LTB, C.LBB,
-  C.RBF, C.RTF, C.RTB,  C.RBF, C.RTB, C.RBB,
-  C.LBB, C.LTB, C.LTF,  C.LBB, C.LTF, C.LBF,
+  C.LTF, C.LTB, C.RTB,  C.LTF, C.RTB, C.RTF,  // TOP
+  C.LBF, C.RBF, C.RBB,  C.LBF, C.RBB, C.LBB,  // BOTTOM
+  C.LBF, C.LTF, C.RTF,  C.LBF, C.RTF, C.RBF,  // FRONT
+  C.RBB, C.RTB, C.LTB,  C.RBB, C.LTB, C.LBB,  // BACK
+  C.RBF, C.RTF, C.RTB,  C.RBF, C.RTB, C.RBB,  // RIGHT
+  C.LBB, C.LTB, C.LTF,  C.LBB, C.LTF, C.LBF,  // LEFT
 ];
 
 const BLOCK_COLORS: Record<number, [number, number, number, number]> = {
-  1: [0.2, 0.8, 0.2, 1.0],
-  2: [0.6, 0.4, 0.2, 1.0],
-  3: [0.5, 0.5, 0.5, 1.0],
+  1: [0.2, 0.8, 0.2, 1.0],  // grass - green
+  2: [0.6, 0.4, 0.2, 1.0],  // dirt - brown
+  3: [0.5, 0.5, 0.5, 1.0],  // stone - gray
 };
 const DEFAULT_COLOR: [number, number, number, number] = [1.0, 0.0, 1.0, 1.0];
 
@@ -82,25 +88,23 @@ function generateAllVertices(
     }
   }
   
-  console.log(`Generated ${vertexCount} vertices for ${voxelCount} voxels (CPU)`);
+  console.log(`[VoxelRenderer] Generated ${vertexCount} vertices for ${voxelCount} voxels`);
   return { positions, colors };
 }
 
 const Renderer: LC<{
   posSource: ShaderSource;
   colorSource: ShaderSource;
-}> = ({ posSource, colorSource }) => {
-  return (
-    <RawFaces
-      positions={posSource}
-      colors={colorSource}
-      shaded={false}
-      side="front"
-      depthTest
-      depthWrite
-    />
-  );
-};
+}> = ({ posSource, colorSource }) => (
+  <RawFaces
+    positions={posSource}
+    colors={colorSource}
+    shaded={false}
+    side="front"
+    depthTest
+    depthWrite
+  />
+);
 
 export const VoxelRenderer: LC<VoxelRendererProps> = ({
   xData,

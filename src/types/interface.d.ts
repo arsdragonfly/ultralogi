@@ -1,5 +1,3 @@
-import type { QueryResult } from "ultralogi-rs";
-
 declare global {
   interface Window {
     ultralogi: {
@@ -8,8 +6,6 @@ declare global {
       execute(sql: string): number;
       /** Query and return Arrow IPC stream buffer. Use with apache-arrow tableFromIPC(). */
       query(sql: string): Buffer;
-      /** @deprecated Use execute() for statements and query() for SELECT queries */
-      executeSql(sql: string): QueryResult;
     }
   }
 }

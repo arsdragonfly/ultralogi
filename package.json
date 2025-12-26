@@ -66,6 +66,7 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
+    "apache-arrow": "^21.1.0",
     "electron-squirrel-startup": "^1.0.1"
   }
 }

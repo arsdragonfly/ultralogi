@@ -15,10 +15,6 @@ use std::sync::Mutex;
 // Global DuckDB connection - thread-safe via Mutex
 static DB: Lazy<Mutex<Connection>> = Lazy::new(|| {
     let conn = Connection::open_in_memory().expect("Failed to create DuckDB connection");
-    
-    // Configure for low-latency single-threaded operation
-    conn.execute_batch("SET threads = 1;").ok();
-    
     Mutex::new(conn)
 });
 

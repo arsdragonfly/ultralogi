@@ -40,15 +40,13 @@ function parseVoxelBuffer(buffer: Buffer): VoxelData {
   return { count, xData: x, yData: y, zData: z, typeData: t };
 }
 
-// 3D Camera with orbit controls (render-prop pattern)
-// Chunk: x=0-31, y=0-32 (stone/dirt/grass), z=0-31
-// Center is around (16, 16, 16), looking from front-above
+// 3D Camera - Full voxel world
 type CameraProps = PropsWithChildren<object>;
 const Camera3D: LC<CameraProps> = (props: CameraProps) => (
   <OrbitControls
     radius={80}
-    bearing={0}
-    pitch={0.5}
+    bearing={Math.PI / 4}
+    pitch={Math.PI / 5}
     target={[16, 16, 16]}
   >
     {(radius, phi, theta, target) => (

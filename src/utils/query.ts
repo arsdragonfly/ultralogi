@@ -7,7 +7,7 @@ import { tableFromIPC, Table } from 'apache-arrow';
  * @returns Arrow Table with typed columns
  */
 export const queryArrow = (sql: string): Table => {
-  const buffer = window.ultralogi.query(sql);
+  const buffer = window.api.query(sql);
   if (buffer.length === 0) {
     // Empty result - return empty table
     return new Table();

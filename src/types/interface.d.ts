@@ -1,6 +1,6 @@
 declare global {
   interface Window {
-    ultralogi: {
+    api: {
       hello(name: string): string;
       execute(sql: string): number;
       query(sql: string): Buffer;
@@ -17,7 +17,7 @@ declare global {
       /** Benchmark precomputed query path */
       benchmarkPrecomputedQuery(): string;
       
-      // === NEW: Raw data export for GPU compute ===
+      // === Raw data export for GPU compute ===
       /** Export raw tile columns for GPU compute: [count:u32][x:i32...][y:i32...][type:i32...][elev:f32...] */
       exportRawTileData(): Buffer;
       /** Cache raw tile data in Rust memory. Returns time in ms. */
@@ -36,6 +36,20 @@ declare global {
       getStorageInfo(): string;
       /** Benchmark compressed vs uncompressed storage */
       benchmarkCompression(): string;
+
+      // === 3D Voxel System ===
+      /** Create voxel chunk with sample terrain. Returns JSON with timing info. */
+      createVoxelWorld(chunkX: number, chunkZ: number): string;
+      /** Query voxels as Arrow IPC buffer */
+      queryVoxelChunk(chunkX: number, chunkZ: number): Buffer;
+      /** Query voxels as raw u8 arrays: [count:u32][x:u8[]][y:u8[]][z:u8[]][type:u8[]] */
+      queryVoxelChunkRaw(chunkX: number, chunkZ: number): Buffer;
+      /** Benchmark voxel query pipeline */
+      benchmarkVoxelQuery(chunkX: number, chunkZ: number): string;
+      
+      // === Screenshot ===
+      /** Take screenshot and save to /tmp/ultralogi-screenshot.png */
+      takeScreenshot(): Promise<string | null>;
     }
   }
 }

@@ -28,6 +28,19 @@ export declare function benchmarkTileQuery(tileSpacing: number, colorScale: numb
  * This computes positions/colors in DuckDB - no JS loops needed!
  */
 export declare function queryTilesGpuReady(tileSpacing: number, colorScale: number): Buffer
+/** Execute SQL and invalidate cache if it's a write operation */
+export declare function executeWithCache(sql: string): number
+/**
+ * Query tiles using Polars cache - much faster for repeated queries
+ * Returns Arrow IPC buffer (same format as query())
+ */
+export declare function queryTilesCached(): Buffer
+/** Get cache statistics */
+export declare function getCacheStats(): string
+/** Clear the Polars cache manually */
+export declare function clearPolarsCache(): void
+/** Benchmark Polars cache latency with detailed timing breakdown */
+export declare function benchmarkPolarsCache(): string
 /**
  * Precompute GPU-ready tile data and cache in Rust memory (not DuckDB).
  * This is O(n) at load time, then query_cached_tiles() is O(1).
@@ -90,3 +103,20 @@ export declare function generateTileChunks(gridSize: number, chunkSize: number, 
 export declare function queryChunkedTiles(): Buffer
 /** Benchmark chunked query (minimal overhead - just fetch precomputed BLOBs) */
 export declare function benchmarkChunkedQuery(): string
+/**
+ * Create voxel chunk table and populate with sample terrain
+ * Chunk size: 32×64×32 = 65,536 voxels (X × Y-height × Z-depth)
+ */
+export declare function createVoxelWorld(chunkX: number, chunkZ: number): string
+/**
+ * Query voxels for a chunk, returning only non-air blocks as Arrow IPC
+ * Returns: Arrow IPC buffer with columns (x, y, z, block_type) as u8
+ */
+export declare function queryVoxelChunk(chunkX: number, chunkZ: number): Buffer
+/**
+ * Query voxels as raw typed arrays (faster than Arrow for small data)
+ * Returns: Binary buffer with [count:u32, x:u8[], y:u8[], z:u8[], type:u8[]]
+ */
+export declare function queryVoxelChunkRaw(chunkX: number, chunkZ: number): Buffer
+/** Benchmark the voxel query pipeline */
+export declare function benchmarkVoxelQuery(chunkX: number, chunkZ: number): string

@@ -1,11 +1,15 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
+
+// Reference for screenshots
+let mainWindowRef: BrowserWindow | null = null;
 
 const createWindow = () => {
   // Create the browser window.
@@ -18,6 +22,9 @@ const createWindow = () => {
       contextIsolation: false,
     },
   });
+
+  // Save reference for screenshots
+  mainWindowRef = mainWindow;
 
   // Log renderer console messages to the terminal
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
@@ -68,3 +75,59 @@ app.on('activate', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// Screenshot functionality
+async function takeScreenshot() {
+  if (!mainWindowRef) return;
+  
+  const screenshotDir = path.join(app.getPath('userData'), '..', 'ultralogi-screenshots');
+  if (!fs.existsSync(screenshotDir)) {
+    fs.mkdirSync(screenshotDir, { recursive: true });
+  }
+  
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `screenshot-${timestamp}.png`;
+  const filepath = path.join(screenshotDir, filename);
+  
+  try {
+    const image = await mainWindowRef.webContents.capturePage();
+    fs.writeFileSync(filepath, image.toPNG());
+    console.log(`📸 Screenshot saved: ${filepath}`);
+    return filepath;
+  } catch (err) {
+    console.error('Screenshot error:', err);
+    return null;
+  }
+}
+
+// IPC handler for screenshots
+ipcMain.handle('take-screenshot', async () => {
+  return await takeScreenshot();
+});
+
+// IPC handler for fixed-path screenshot (for automated testing)
+ipcMain.handle('take-screenshot-fixed', async () => {
+  if (!mainWindowRef) return null;
+  const filepath = '/tmp/ultralogi-screenshot.png';
+  try {
+    const image = await mainWindowRef.webContents.capturePage();
+    fs.writeFileSync(filepath, image.toPNG());
+    console.log(`📸 Screenshot saved: ${filepath}`);
+    return filepath;
+  } catch (err) {
+    console.error('Screenshot error:', err);
+    return null;
+  }
+});
+
+// Register global shortcut for screenshots (F12)
+app.whenReady().then(() => {
+  globalShortcut.register('F12', () => {
+    takeScreenshot();
+  });
+  console.log('📸 Press F12 to take a screenshot');
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});

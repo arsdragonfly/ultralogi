@@ -5,11 +5,15 @@
   "description": "Ultralogi - Transport Tycoon-style logistics game with WebGPU rendering",
   "main": ".vite/build/main.js",
   "scripts": {
-    "start": "LD_LIBRARY_PATH=\"$PWD/ultralogi-rs:$LD_LIBRARY_PATH\" electron-forge start",
+    "start": "screen -dmS ultralogi electron-forge start && sleep 2 && screen -r ultralogi",
+    "start:detached": "screen -dmS ultralogi electron-forge start",
+    "start:attach": "screen -r ultralogi",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "test": "npx playwright test",
+    "screenshot": "npx ts-node tests/screenshot.ts"
   },
   "keywords": [
     "game",
@@ -36,6 +40,7 @@
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron-forge/plugin-vite": "^7.10.2",
     "@electron/fuses": "^1.8.0",
+    "@playwright/test": "^1.57.0",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/react": "^19.1.15",
     "@use-gpu/inspect": "^0.18.0",
@@ -57,6 +62,7 @@
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
+    "playwright": "^1.57.0",
     "react": "^19.1.1",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.43.0",

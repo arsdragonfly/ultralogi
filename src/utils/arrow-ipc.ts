@@ -104,6 +104,70 @@ export function parseTileBuffer(buffer: Uint8Array): TileData {
  * Query and parse in one step.
  */
 export function queryTiles(sql: string): TileData {
-  const buffer = window.ultralogi.query(sql);
+  const buffer = window.api.query(sql);
   return parseTileBuffer(buffer);
+}
+
+// ============================================================================
+// Generic Arrow IPC deserialization helpers for debugging
+// ============================================================================
+
+/**
+ * Deserialize an Arrow IPC buffer into an array of JavaScript objects.
+ * Useful for debugging DuckDB query results.
+ */
+export function arrowToObjects<T = Record<string, unknown>>(buffer: Buffer | Uint8Array): T[] {
+  if (!buffer || buffer.length === 0) {
+    return [];
+  }
+  
+  try {
+    const table = tableFromIPC(buffer);
+    const results: T[] = [];
+    
+    for (let i = 0; i < table.numRows; i++) {
+      const row: Record<string, unknown> = {};
+      for (const field of table.schema.fields) {
+        const col = table.getChild(field.name);
+        row[field.name] = col?.get(i);
+      }
+      results.push(row as T);
+    }
+    
+    return results;
+  } catch (e) {
+    console.error('Failed to parse Arrow IPC buffer:', e);
+    return [];
+  }
+}
+
+/**
+ * Deserialize an Arrow IPC buffer and log it as a table.
+ */
+export function logArrowTable(buffer: Buffer | Uint8Array, label?: string): void {
+  const objects = arrowToObjects(buffer);
+  if (label) {
+    console.log(`\n=== ${label} ===`);
+  }
+  console.table(objects);
+}
+
+/**
+ * Get Arrow table schema info.
+ */
+export function getArrowSchema(buffer: Buffer | Uint8Array): { name: string; type: string }[] {
+  if (!buffer || buffer.length === 0) {
+    return [];
+  }
+  
+  try {
+    const table = tableFromIPC(buffer);
+    return table.schema.fields.map(f => ({
+      name: f.name,
+      type: f.type.toString(),
+    }));
+  } catch (e) {
+    console.error('Failed to parse Arrow schema:', e);
+    return [];
+  }
 }

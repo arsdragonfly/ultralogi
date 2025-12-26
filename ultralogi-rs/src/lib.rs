@@ -5,11 +5,9 @@ use arrow::ipc::writer::StreamWriter;
 use duckdb::Connection;
 use napi::bindgen_prelude::Buffer;
 use once_cell::sync::Lazy;
+use polars::prelude::*;
+use std::collections::HashMap;
 use std::sync::Mutex;
-
-// Use mimalloc as global allocator - faster for allocation-heavy workloads
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 // Global DuckDB connection - thread-safe via Mutex
 static DB: Lazy<Mutex<Connection>> = Lazy::new(|| {
@@ -390,6 +388,265 @@ pub fn query_tiles_gpu_ready(tile_spacing: f64, color_scale: f64) -> napi::Resul
 
 // Global GPU data cache - computed once, served instantly
 static GPU_CACHE: Lazy<Mutex<Option<Vec<u8>>>> = Lazy::new(|| Mutex::new(None));
+
+// ============================================================================
+// Polars DataFrame Cache
+// ============================================================================
+// DuckDB can output directly to Polars DataFrames (zero-copy via Arrow).
+// We cache these DataFrames in Rust memory for repeated fast access.
+// Cache key is the SQL query string, value is the resulting DataFrame.
+
+/// Cache structure: SQL query -> Polars DataFrame
+/// The DataFrame shares Arrow arrays with what DuckDB produced (near zero-copy)
+struct DataFrameCache {
+    /// Cached query results
+    cache: HashMap<String, DataFrame>,
+    /// Cache version - incremented on writes to invalidate
+    version: u64,
+}
+
+impl DataFrameCache {
+    fn new() -> Self {
+        Self {
+            cache: HashMap::new(),
+            version: 0,
+        }
+    }
+}
+
+static POLARS_CACHE: Lazy<Mutex<DataFrameCache>> = Lazy::new(|| {
+    Mutex::new(DataFrameCache::new())
+});
+
+/// Query DuckDB and return result as Polars DataFrame, with caching.
+/// On cache hit: returns clone of DataFrame (~instant, shares underlying Arrow arrays)
+/// On cache miss: queries DuckDB, collects to DataFrame, caches, returns clone
+fn query_polars_cached(sql: &str) -> Result<DataFrame, String> {
+    // Check cache first (separate lock scope)
+    {
+        let cache = POLARS_CACHE.lock().map_err(|e| e.to_string())?;
+        if let Some(df) = cache.cache.get(sql) {
+            // Clone is cheap - DataFrame columns use Arc internally
+            return Ok(df.clone());
+        }
+    }
+
+    // Cache miss - query DuckDB
+    let conn = DB.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    
+    // Use DuckDB's native Polars output - iterates over DataFrame chunks
+    let polars_iter = stmt.query_polars([]).map_err(|e| e.to_string())?;
+    
+    // Collect all chunks and vstack them into one DataFrame
+    let dataframes: Vec<DataFrame> = polars_iter.collect();
+    
+    if dataframes.is_empty() {
+        // Return empty DataFrame
+        return Ok(DataFrame::empty());
+    }
+    
+    // Vertically stack all chunks into a single DataFrame
+    let mut result = dataframes[0].clone();
+    for df in dataframes.iter().skip(1) {
+        result = result.vstack(df).map_err(|e| e.to_string())?;
+    }
+    
+    // Drop connection lock, acquire cache lock
+    drop(conn);
+    
+    // Store in cache
+    {
+        let mut cache = POLARS_CACHE.lock().map_err(|e| e.to_string())?;
+        cache.cache.insert(sql.to_string(), result.clone());
+    }
+    
+    Ok(result)
+}
+
+/// Invalidate the Polars cache (call after INSERT/UPDATE/DELETE)
+fn invalidate_polars_cache() -> Result<(), String> {
+    let mut cache = POLARS_CACHE.lock().map_err(|e| e.to_string())?;
+    cache.cache.clear();
+    cache.version += 1;
+    Ok(())
+}
+
+/// Execute SQL and invalidate cache if it's a write operation
+#[napi]
+pub fn execute_with_cache(sql: String) -> napi::Result<i32> {
+    let conn = DB
+        .lock()
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let rows = conn
+        .execute(&sql, [])
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    
+    // Invalidate cache on any write operation
+    let sql_upper = sql.to_uppercase();
+    if sql_upper.starts_with("INSERT")
+        || sql_upper.starts_with("UPDATE")
+        || sql_upper.starts_with("DELETE")
+        || sql_upper.starts_with("DROP")
+        || sql_upper.starts_with("CREATE")
+        || sql_upper.starts_with("ALTER")
+    {
+        drop(conn); // Release DB lock before cache lock
+        invalidate_polars_cache().map_err(|e| napi::Error::from_reason(e))?;
+    }
+
+    Ok(rows as i32)
+}
+
+/// Query tiles using Polars cache - much faster for repeated queries
+/// Returns Arrow IPC buffer (same format as query())
+#[napi]
+pub fn query_tiles_cached() -> napi::Result<Buffer> {
+    use std::time::Instant;
+    let start = Instant::now();
+    
+    // Use cached Polars DataFrame
+    let mut df = query_polars_cached("SELECT x, y, tile_type, elevation FROM tiles")
+        .map_err(|e| napi::Error::from_reason(e))?;
+    
+    let cache_time = start.elapsed();
+    
+    // Convert Polars DataFrame to Arrow IPC using Polars' own writer
+    let ipc_start = Instant::now();
+    
+    let mut buf: Vec<u8> = Vec::new();
+    {
+        // Use Polars' IpcWriter which handles the Arrow conversion internally
+        IpcWriter::new(&mut buf)
+            .finish(&mut df)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    }
+    
+    let ipc_time = ipc_start.elapsed();
+    
+    // Log timing for benchmarking
+    eprintln!(
+        "[Polars cache] rows={}, cache={:?}, ipc={:?}, total={:?}",
+        df.height(),
+        cache_time,
+        ipc_time,
+        start.elapsed()
+    );
+    
+    Ok(Buffer::from(buf))
+}
+
+/// Get cache statistics
+#[napi]
+pub fn get_cache_stats() -> napi::Result<String> {
+    let cache = POLARS_CACHE
+        .lock()
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    
+    let mut total_rows = 0usize;
+    let mut queries: Vec<String> = Vec::new();
+    
+    for (sql, df) in &cache.cache {
+        total_rows += df.height();
+        queries.push(format!("  - {} ({} rows)", sql, df.height()));
+    }
+    
+    Ok(format!(
+        "Polars Cache v{}:\n  Entries: {}\n  Total rows: {}\n  Queries:\n{}",
+        cache.version,
+        cache.cache.len(),
+        total_rows,
+        queries.join("\n")
+    ))
+}
+
+/// Clear the Polars cache manually
+#[napi]
+pub fn clear_polars_cache() -> napi::Result<()> {
+    invalidate_polars_cache().map_err(|e| napi::Error::from_reason(e))?;
+    Ok(())
+}
+
+/// Benchmark Polars cache latency with detailed timing breakdown
+#[napi]
+pub fn benchmark_polars_cache() -> napi::Result<String> {
+    use std::time::Instant;
+    
+    let sql = "SELECT x, y, tile_type, elevation FROM tiles";
+    
+    // First call - cache miss (warm up DuckDB + populate cache)
+    let cold_start = Instant::now();
+    let _df = query_polars_cached(sql).map_err(|e| napi::Error::from_reason(e))?;
+    let cold_us = cold_start.elapsed().as_nanos() as f64 / 1000.0;
+    
+    // Second call - should be cache hit
+    let cache_lookup_start = Instant::now();
+    let cache = POLARS_CACHE.lock().map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    let lock_us = cache_lookup_start.elapsed().as_nanos() as f64 / 1000.0;
+    
+    let get_start = Instant::now();
+    let df = cache.cache.get(sql).cloned();
+    let get_us = get_start.elapsed().as_nanos() as f64 / 1000.0;
+    drop(cache);
+    
+    let df = df.ok_or_else(|| napi::Error::from_reason("Cache miss after warm-up"))?;
+    let rows = df.height();
+    
+    // Measure clone cost (what happens on cache hit)
+    let clone_start = Instant::now();
+    let mut df_clone = df.clone();
+    let clone_us = clone_start.elapsed().as_nanos() as f64 / 1000.0;
+    
+    // Measure IPC serialization
+    let ipc_start = Instant::now();
+    let mut buf: Vec<u8> = Vec::new();
+    IpcWriter::new(&mut buf)
+        .finish(&mut df_clone)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    let ipc_us = ipc_start.elapsed().as_nanos() as f64 / 1000.0;
+    let ipc_bytes = buf.len();
+    
+    // Measure Buffer::from
+    let buffer_start = Instant::now();
+    let _buffer = Buffer::from(buf);
+    let buffer_us = buffer_start.elapsed().as_nanos() as f64 / 1000.0;
+    
+    // Full hot path (cache hit → IPC → Buffer)
+    let hot_start = Instant::now();
+    let mut df2 = query_polars_cached(sql).map_err(|e| napi::Error::from_reason(e))?;
+    let mut buf2: Vec<u8> = Vec::new();
+    IpcWriter::new(&mut buf2)
+        .finish(&mut df2)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    let _buffer2 = Buffer::from(buf2);
+    let hot_us = hot_start.elapsed().as_nanos() as f64 / 1000.0;
+    
+    Ok(format!(
+        r#"{{
+  "rows": {},
+  "ipc_bytes": {},
+  "cold_query_us": {:.1},
+  "cache_lock_us": {:.1},
+  "cache_get_us": {:.1},
+  "df_clone_us": {:.1},
+  "ipc_write_us": {:.1},
+  "buffer_from_us": {:.1},
+  "hot_path_total_us": {:.1},
+  "hot_path_ms": {:.2}
+}}"#,
+        rows,
+        ipc_bytes,
+        cold_us,
+        lock_us,
+        get_us,
+        clone_us,
+        ipc_us,
+        buffer_us,
+        hot_us,
+        hot_us / 1000.0
+    ))
+}
 
 /// Precompute GPU-ready tile data and cache in Rust memory (not DuckDB).
 /// This is O(n) at load time, then query_cached_tiles() is O(1).
@@ -1343,5 +1600,213 @@ pub fn benchmark_chunked_query() -> napi::Result<String> {
     Ok(format!(
         r#"{{"total_us":{:.2},"rows":{},"chunks":{},"breakdown":{{"lock_us":{:.2},"prepare_us":{:.2},"query_us":{:.2},"collect_us":{:.2},"pack_us":{:.2},"buffer_us":{:.2}}}}}"#,
         total_us, total_count, chunk_count, lock_us, prepare_us, query_us, collect_us, pack_us, buffer_us
+    ))
+}
+
+// ============================================================================
+// 3D VOXEL SYSTEM - Minimal DuckDB → Arrow → GPU pipeline
+// ============================================================================
+// Coordinate system (WebGPU-native, Y-up):
+//   x: 0..31 (right)
+//   y: 0..63 (up/height)
+//   z: 0..31 (forward/depth)
+// ============================================================================
+
+/// Create voxel chunk table and populate with sample terrain
+/// Chunk size: 32×64×32 = 65,536 voxels (X × Y-height × Z-depth)
+#[napi]
+pub fn create_voxel_world(chunk_x: i32, chunk_z: i32) -> napi::Result<String> {
+    let conn = DB
+        .lock()
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    // Create voxels table if not exists
+    // Coordinate system: x (right 0-31), y (up/height 0-63), z (depth 0-31)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS voxels (
+            chunk_x INTEGER,
+            chunk_z INTEGER,
+            x UTINYINT,
+            y UTINYINT,
+            z UTINYINT,
+            block_type UTINYINT,
+            PRIMARY KEY (chunk_x, chunk_z, x, y, z)
+        )"
+    ).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    // Clear any existing data for this chunk
+    conn.execute(
+        "DELETE FROM voxels WHERE chunk_x = ?1 AND chunk_z = ?2",
+        duckdb::params![chunk_x, chunk_z],
+    ).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    // Generate terrain for this chunk
+    // Simple terrain: stone below, dirt, grass on top, air above
+    // Coordinate system: x (0-31), y (0-63 height, 0=bottom, 63=top), z (0-31 depth)
+    // Terrain surface at y=32, so grass at y=32, stone/dirt below, air above
+    // NOTE: Must use integer division (i // 1024) not float division (i / 1024)
+    // 
+    // CRITICAL: Block types by Y position:
+    //   y > 32: air (type 0) - sky above terrain
+    //   y = 32: grass (type 1) - top surface  
+    //   y = 29-31: dirt (type 2) - just below grass
+    //   y < 29: stone (type 3) - deep underground
+    let sql = format!(
+        "INSERT INTO voxels
+         SELECT 
+            {chunk_x} as chunk_x,
+            {chunk_z} as chunk_z,
+            (i % 32)::UTINYINT as x,
+            (i // 1024)::UTINYINT as y,
+            ((i // 32) % 32)::UTINYINT as z,
+            CASE 
+                -- Air above y=32 (sky)
+                WHEN (i // 1024) > 32 THEN 0
+                -- Grass at y=32 (surface)
+                WHEN (i // 1024) = 32 THEN 1
+                -- Dirt for y=29,30,31 (subsurface)
+                WHEN (i // 1024) > 28 THEN 2
+                -- Stone below y=29 (deep)
+                ELSE 3
+            END::UTINYINT as block_type
+         FROM generate_series(0, 32*32*64 - 1) t(i)",
+        chunk_x = chunk_x,
+        chunk_z = chunk_z
+    );
+    
+    let start = std::time::Instant::now();
+    conn.execute(&sql, [])
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    let elapsed = start.elapsed();
+
+    Ok(format!(
+        r#"{{"chunk_x":{},"chunk_z":{},"voxels":65536,"time_ms":{:.1}}}"#,
+        chunk_x, chunk_z, elapsed.as_secs_f64() * 1000.0
+    ))
+}
+
+/// Query voxels for a chunk, returning only non-air blocks as Arrow IPC
+/// Returns: Arrow IPC buffer with columns (x, y, z, block_type) as u8
+#[napi]
+pub fn query_voxel_chunk(chunk_x: i32, chunk_z: i32) -> napi::Result<Buffer> {
+    let conn = DB
+        .lock()
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let sql = format!(
+        "SELECT x, y, z, block_type FROM voxels 
+         WHERE chunk_x = {} AND chunk_z = {} AND block_type > 0
+         ORDER BY z, y, x",
+        chunk_x, chunk_z
+    );
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let arrow_result = stmt
+        .query_arrow([])
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let batches: Vec<_> = arrow_result.collect();
+
+    if batches.is_empty() {
+        return Ok(Buffer::from(Vec::new()));
+    }
+
+    let schema = batches[0].schema();
+    let mut buf: Vec<u8> = Vec::new();
+
+    {
+        let mut writer = StreamWriter::try_new(&mut buf, &schema)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+        for batch in &batches {
+            writer.write(batch)
+                .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        }
+
+        writer.finish()
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    }
+
+    Ok(Buffer::from(buf))
+}
+
+/// Query voxels as raw typed arrays (faster than Arrow for small data)
+/// Returns: Binary buffer with [count:u32, x:u8[], y:u8[], z:u8[], type:u8[]]
+#[napi]
+pub fn query_voxel_chunk_raw(chunk_x: i32, chunk_z: i32) -> napi::Result<Buffer> {
+    use arrow::array::UInt8Array;
+    
+    let conn = DB
+        .lock()
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let sql = format!(
+        "SELECT x, y, z, block_type FROM voxels 
+         WHERE chunk_x = {} AND chunk_z = {} AND block_type > 0",
+        chunk_x, chunk_z
+    );
+
+    let mut stmt = conn
+        .prepare_cached(&sql)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let arrow_result = stmt
+        .query_arrow([])
+        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    let batches: Vec<_> = arrow_result.collect();
+
+    if batches.is_empty() {
+        let empty: Vec<u8> = vec![0, 0, 0, 0]; // count = 0
+        return Ok(Buffer::from(empty));
+    }
+
+    // Count total rows
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+
+    // Pack: [count:u32, x[], y[], z[], type[]]
+    let mut output: Vec<u8> = Vec::with_capacity(4 + total_rows * 4);
+    output.extend_from_slice(&(total_rows as u32).to_le_bytes());
+
+    // Extract each column
+    for col_idx in 0..4 {
+        for batch in &batches {
+            let col = batch.column(col_idx);
+            let arr = col.as_any().downcast_ref::<UInt8Array>()
+                .ok_or_else(|| napi::Error::from_reason("Expected u8 array"))?;
+            output.extend_from_slice(arr.values());
+        }
+    }
+
+    Ok(Buffer::from(output))
+}
+
+/// Benchmark the voxel query pipeline
+#[napi]
+pub fn benchmark_voxel_query(chunk_x: i32, chunk_z: i32) -> napi::Result<String> {
+    use std::time::Instant;
+
+    let total_start = Instant::now();
+
+    // Query raw
+    let query_start = Instant::now();
+    let buffer = query_voxel_chunk_raw(chunk_x, chunk_z)?;
+    let query_ms = query_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Parse count
+    let count = if buffer.len() >= 4 {
+        u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]])
+    } else {
+        0
+    };
+
+    let total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(format!(
+        r#"{{"total_ms":{:.2},"query_ms":{:.2},"voxels":{},"bytes":{}}}"#,
+        total_ms, query_ms, count, buffer.len()
     ))
 }

@@ -1,4 +1,5 @@
 /// <reference path="./types/interface.d.ts" />
+import { ipcRenderer } from 'electron';
 import { 
   hello, 
   execute, 
@@ -9,7 +10,7 @@ import {
   precomputeTileGpuData,
   queryPrecomputedTiles,
   benchmarkPrecomputedQuery,
-  // NEW: Raw data export for GPU compute
+  // Raw data export for GPU compute
   exportRawTileData,
   cacheRawTileData,
   getCachedRawTiles,
@@ -20,9 +21,14 @@ import {
   // Storage/compression inspection
   getStorageInfo,
   benchmarkCompression,
+  // 3D Voxel system
+  createVoxelWorld,
+  queryVoxelChunk,
+  queryVoxelChunkRaw,
+  benchmarkVoxelQuery,
 } from 'ultralogi-rs';
 
-window.ultralogi = {
+window.api = {
   hello,
   execute,
   query,
@@ -32,7 +38,7 @@ window.ultralogi = {
   precomputeTileGpuData,
   queryPrecomputedTiles,
   benchmarkPrecomputedQuery,
-  // NEW: Raw data export for GPU compute
+  // Raw data export for GPU compute
   exportRawTileData,
   cacheRawTileData,
   getCachedRawTiles,
@@ -43,4 +49,11 @@ window.ultralogi = {
   // Storage/compression inspection
   getStorageInfo,
   benchmarkCompression,
+  // 3D Voxel system
+  createVoxelWorld,
+  queryVoxelChunk,
+  queryVoxelChunkRaw,
+  benchmarkVoxelQuery,
+  // Screenshot via IPC
+  takeScreenshot: () => ipcRenderer.invoke('take-screenshot-fixed'),
 };

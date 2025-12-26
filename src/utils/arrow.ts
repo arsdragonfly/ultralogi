@@ -17,7 +17,7 @@ const getArrow = async () => {
  */
 export const queryArrowAsync = async (sql: string) => {
   const { tableFromIPC, Table } = await getArrow();
-  const buffer = window.ultralogi.query(sql);
+  const buffer = window.api.query(sql);
   if (buffer.length === 0) {
     return new Table();
   }

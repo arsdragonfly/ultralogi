@@ -113,7 +113,7 @@ const TileMap3D: LC<TileMapProps> = ({ tiles }: TileMapProps) => {
   );
 };
 
-export const App: LC = hot(() => {
+export const VoxelApp: LC = hot(() => {
   const root = document.querySelector("#use-gpu")!;
   const inner = document.querySelector("#use-gpu .canvas")!;
   const [tiles, setTiles] = useState<GpuTileData | null>(null);
